@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import Icon from '@/components/ui/icon';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -12,6 +12,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion';
+import { useToast } from '@/hooks/use-toast';
 
 const HERO_IMG =
   'https://cdn.poehali.dev/projects/da7389f7-c8b9-45ab-a83f-466e935152e2/files/0be4ca56-cd0a-4f03-8197-ed54110d71b7.jpg';
@@ -71,14 +72,68 @@ function Stars({ n }: { n: number }) {
 }
 
 const Index = () => {
+  const { toast } = useToast();
   const [role, setRole] = useState<'driver' | 'passenger'>('passenger');
   const [msg, setMsg] = useState('');
   const [chat, setChat] = useState(CHAT);
+  const chatRef = useRef<HTMLDivElement>(null);
+
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [date, setDate] = useState('');
+  const [filtered, setFiltered] = useState(RIDES);
+
+  const [chatWith, setChatWith] = useState(RIDES[0].name);
+
+  const [contact, setContact] = useState({ name: '', email: '', message: '' });
+
+  useEffect(() => {
+    chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: 'smooth' });
+  }, [chat]);
 
   const send = () => {
     if (!msg.trim()) return;
     setChat([...chat, { me: true, text: msg }]);
     setMsg('');
+  };
+
+  const scrollTo = (id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const handleSearch = () => {
+    const f = from.trim().toLowerCase();
+    const t = to.trim().toLowerCase();
+    const res = RIDES.filter(
+      (r) =>
+        (!f || r.from.toLowerCase().includes(f)) &&
+        (!t || r.to.toLowerCase().includes(t)),
+    );
+    setFiltered(res);
+    toast({
+      title: res.length ? `Найдено поездок: ${res.length}` : 'Поездки не найдены',
+      description: res.length ? 'Выберите попутчика и свяжитесь с ним' : 'Попробуйте изменить маршрут или дату',
+    });
+  };
+
+  const openChat = (name: string) => {
+    setChatWith(name);
+    setChat([{ me: false, name, text: `Здравствуйте! Это ${name}. Чем могу помочь по поездке?` }]);
+    scrollTo('cabinet');
+    toast({ title: 'Чат открыт', description: `Вы начали переписку с ${name}` });
+  };
+
+  const donate = (sum: string) => {
+    toast({ title: 'Спасибо за поддержку! ❤️', description: `Переходим к оплате доната на ${sum}` });
+  };
+
+  const submitContact = () => {
+    if (!contact.name.trim() || !contact.email.trim() || !contact.message.trim()) {
+      toast({ title: 'Заполните все поля', description: 'Имя, email и сообщение обязательны', variant: 'destructive' });
+      return;
+    }
+    toast({ title: 'Сообщение отправлено!', description: 'Команда поддержки ответит вам в ближайшее время' });
+    setContact({ name: '', email: '', message: '' });
   };
 
   return (
@@ -99,8 +154,8 @@ const Index = () => {
               </a>
             ))}
           </nav>
-          <Button className="gradient-sunset text-white border-0 rounded-full font-semibold hover-scale" asChild>
-            <a href="#cabinet">Войти</a>
+          <Button onClick={() => scrollTo('cabinet')} className="gradient-sunset text-white border-0 rounded-full font-semibold hover-scale">
+            Войти
           </Button>
         </div>
       </header>
@@ -119,11 +174,11 @@ const Index = () => {
               Путешествуй дешевле, делись расходами и знакомься с новыми людьми. Встроенный чат, рейтинги и проверенные водители.
             </p>
             <div className="flex flex-wrap gap-3">
-              <Button size="lg" className="gradient-sunset text-white border-0 rounded-full font-semibold glow hover-scale" asChild>
-                <a href="#search"><Icon name="Search" size={18} className="mr-2" />Найти поездку</a>
+              <Button onClick={() => scrollTo('search')} size="lg" className="gradient-sunset text-white border-0 rounded-full font-semibold glow hover-scale">
+                <Icon name="Search" size={18} className="mr-2" />Найти поездку
               </Button>
-              <Button size="lg" variant="outline" className="rounded-full font-semibold hover-scale" asChild>
-                <a href="#cabinet"><Icon name="Car" size={18} className="mr-2" />Я водитель</a>
+              <Button onClick={() => { setRole('driver'); scrollTo('cabinet'); }} size="lg" variant="outline" className="rounded-full font-semibold hover-scale">
+                <Icon name="Car" size={18} className="mr-2" />Я водитель
               </Button>
             </div>
             <div className="flex gap-8 mt-10">
@@ -151,23 +206,29 @@ const Index = () => {
           <div className="grid md:grid-cols-4 gap-3">
             <div className="relative">
               <Icon name="MapPin" size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-primary" />
-              <Input placeholder="Откуда" className="pl-10 h-12 rounded-xl" />
+              <Input value={from} onChange={(e) => setFrom(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} placeholder="Откуда" className="pl-10 h-12 rounded-xl" />
             </div>
             <div className="relative">
               <Icon name="Flag" size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-accent" />
-              <Input placeholder="Куда" className="pl-10 h-12 rounded-xl" />
+              <Input value={to} onChange={(e) => setTo(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSearch()} placeholder="Куда" className="pl-10 h-12 rounded-xl" />
             </div>
             <div className="relative">
               <Icon name="Calendar" size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-secondary" />
-              <Input placeholder="Дата" className="pl-10 h-12 rounded-xl" />
+              <Input value={date} onChange={(e) => setDate(e.target.value)} placeholder="Дата" className="pl-10 h-12 rounded-xl" />
             </div>
-            <Button className="h-12 gradient-sunset text-white border-0 rounded-xl font-semibold hover-scale">
+            <Button onClick={handleSearch} className="h-12 gradient-sunset text-white border-0 rounded-xl font-semibold hover-scale">
               <Icon name="Search" size={18} className="mr-2" />Искать
             </Button>
           </div>
         </Card>
+        {filtered.length === 0 && (
+          <div className="text-center text-muted-foreground py-10">
+            <Icon name="SearchX" size={40} className="mx-auto mb-3 text-primary" />
+            По вашему запросу поездок не найдено. Попробуйте другой маршрут.
+          </div>
+        )}
         <div className="grid md:grid-cols-2 gap-5">
-          {RIDES.map((r, i) => (
+          {filtered.map((r, i) => (
             <Card key={i} className="p-5 rounded-3xl border-border/60 hover-scale hover:shadow-xl transition-shadow">
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-2 font-display font-bold text-lg">
@@ -196,7 +257,7 @@ const Index = () => {
                   <Badge variant="secondary" className="mt-1 rounded-full">{r.seats} места</Badge>
                 </div>
               </div>
-              <Button className="w-full mt-4 rounded-xl gradient-sunset text-white border-0 font-semibold hover-scale">
+              <Button onClick={() => openChat(r.name)} className="w-full mt-4 rounded-xl gradient-sunset text-white border-0 font-semibold hover-scale">
                 Связаться <Icon name="MessageCircle" size={16} className="ml-2" />
               </Button>
             </Card>
@@ -236,7 +297,7 @@ const Index = () => {
                     <Badge className="gradient-sunset text-white border-0 rounded-full">{r.date.split(',')[0]}</Badge>
                   </div>
                 ))}
-                <Button className="w-full mt-4 rounded-xl gradient-sunset text-white border-0 font-semibold hover-scale">
+                <Button onClick={() => scrollTo('search')} className="w-full mt-4 rounded-xl gradient-sunset text-white border-0 font-semibold hover-scale">
                   <Icon name="Search" size={16} className="mr-2" />Найти новую поездку
                 </Button>
               </Card>
@@ -259,7 +320,7 @@ const Index = () => {
                     <Badge variant="secondary" className="rounded-full">{r.seats} мест свободно</Badge>
                   </div>
                 ))}
-                <Button className="w-full mt-4 rounded-xl gradient-sunset text-white border-0 font-semibold hover-scale">
+                <Button onClick={() => toast({ title: 'Создание поездки', description: 'Форма публикации поездки скоро будет здесь' })} className="w-full mt-4 rounded-xl gradient-sunset text-white border-0 font-semibold hover-scale">
                   <Icon name="Plus" size={16} className="mr-2" />Опубликовать поездку
                 </Button>
               </Card>
@@ -277,13 +338,13 @@ const Index = () => {
           </div>
           <Card className="rounded-3xl border-border/60 overflow-hidden">
             <div className="gradient-sunset text-white px-5 py-3 flex items-center gap-3">
-              <Avatar className="w-9 h-9 border-2 border-white/40"><AvatarFallback className="bg-white/20 text-white">А</AvatarFallback></Avatar>
+              <Avatar className="w-9 h-9 border-2 border-white/40"><AvatarFallback className="bg-white/20 text-white">{chatWith[0]}</AvatarFallback></Avatar>
               <div>
-                <div className="font-semibold text-sm">Алексей К.</div>
+                <div className="font-semibold text-sm">{chatWith}</div>
                 <div className="text-xs text-white/80 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-300" />в сети</div>
               </div>
             </div>
-            <div className="p-4 space-y-3 h-64 overflow-y-auto bg-muted/30">
+            <div ref={chatRef} className="p-4 space-y-3 h-64 overflow-y-auto bg-muted/30">
               {chat.map((m, i) => (
                 <div key={i} className={`flex ${m.me ? 'justify-end' : 'justify-start'}`}>
                   <div className={`max-w-[75%] px-4 py-2 rounded-2xl text-sm ${m.me ? 'gradient-sunset text-white rounded-br-sm' : 'bg-white border border-border rounded-bl-sm'}`}>
@@ -319,12 +380,12 @@ const Index = () => {
           </p>
           <div className="flex flex-wrap justify-center gap-3 mb-6">
             {['100 ₽', '300 ₽', '500 ₽', '1 000 ₽'].map((s) => (
-              <Button key={s} variant="secondary" className="rounded-full font-bold bg-white text-primary hover:bg-white/90 hover-scale border-0 px-6">
+              <Button key={s} onClick={() => donate(s)} variant="secondary" className="rounded-full font-bold bg-white text-primary hover:bg-white/90 hover-scale border-0 px-6">
                 {s}
               </Button>
             ))}
           </div>
-          <Button size="lg" className="rounded-full bg-white text-primary hover:bg-white/90 font-bold px-10 hover-scale border-0">
+          <Button onClick={() => donate('любую сумму')} size="lg" className="rounded-full bg-white text-primary hover:bg-white/90 font-bold px-10 hover-scale border-0">
             <Icon name="Heart" size={18} className="mr-2 fill-primary" />Поддержать проект
           </Button>
         </Card>
@@ -384,10 +445,10 @@ const Index = () => {
           <Card className="p-6 rounded-3xl border-border/60">
             <div className="font-display font-bold text-lg mb-4">Написать в поддержку</div>
             <div className="space-y-3">
-              <Input placeholder="Ваше имя" className="h-12 rounded-xl" />
-              <Input placeholder="Email" className="h-12 rounded-xl" />
-              <textarea placeholder="Сообщение" rows={4} className="w-full rounded-xl border border-input bg-background p-3 text-sm resize-none" />
-              <Button className="w-full h-12 gradient-sunset text-white border-0 rounded-xl font-semibold hover-scale">Отправить</Button>
+              <Input value={contact.name} onChange={(e) => setContact({ ...contact, name: e.target.value })} placeholder="Ваше имя" className="h-12 rounded-xl" />
+              <Input value={contact.email} onChange={(e) => setContact({ ...contact, email: e.target.value })} placeholder="Email" className="h-12 rounded-xl" />
+              <textarea value={contact.message} onChange={(e) => setContact({ ...contact, message: e.target.value })} placeholder="Сообщение" rows={4} className="w-full rounded-xl border border-input bg-background p-3 text-sm resize-none" />
+              <Button onClick={submitContact} className="w-full h-12 gradient-sunset text-white border-0 rounded-xl font-semibold hover-scale">Отправить</Button>
             </div>
           </Card>
         </div>
