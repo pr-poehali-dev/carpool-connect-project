@@ -11,6 +11,7 @@ import { useToast } from '@/hooks/use-toast';
 type Role = 'passenger' | 'driver';
 type Ride = { from: string; to: string; date: string; price: string; name: string; rating: number; seats: number; car: string };
 type Msg  = { me: boolean; text: string };
+type Booking = Ride & { bookedAt: string; status: 'active' | 'cancelled' };
 
 /* ─── статичные данные ─── */
 const SEED_RIDES: Ride[] = [
@@ -96,7 +97,10 @@ export default function Index() {
   const [af, setAf]             = useState({ name: '', email: '', password: '' });
 
   /* cabinet */
-  const [tab, setTab] = useState<'overview'|'chat'|'publish'>('overview');
+  const [tab, setTab] = useState<'overview'|'chat'|'publish'|'bookings'>('overview');
+
+  /* bookings */
+  const [bookings, setBookings] = useState<Booking[]>([]);
 
   /* rides — единый источник правды */
   const [rides, setRides] = useState<Ride[]>(SEED_RIDES);
@@ -143,6 +147,36 @@ export default function Index() {
       (!qTo.trim()   || r.to.toLowerCase().includes(qTo.trim().toLowerCase()))
     );
     toast({ title: res.length ? `Найдено: ${res.length}` : 'Ничего не найдено', description: res.length ? 'Выберите попутчика' : 'Попробуйте другой маршрут' });
+  };
+
+  const book = (ride: Ride) => {
+    if (!user) { toast({ title: 'Требуется вход', variant: 'destructive' }); go('cabinet'); return; }
+    if (user.role === 'driver') { toast({ title: 'Водители не могут бронировать', description: 'Переключитесь на аккаунт пассажира', variant: 'destructive' }); return; }
+    const already = bookings.find(b => b.from === ride.from && b.to === ride.to && b.date === ride.date && b.status === 'active');
+    if (already) { toast({ title: 'Уже забронировано', description: `${ride.from} → ${ride.to}` }); return; }
+    const now = new Date().toLocaleString('ru', { day:'numeric', month:'long', hour:'2-digit', minute:'2-digit' });
+    setBookings(prev => [{ ...ride, bookedAt: now, status: 'active' }, ...prev]);
+    // уменьшаем кол-во мест
+    setRides(prev => prev.map(r =>
+      r.from === ride.from && r.to === ride.to && r.date === ride.date
+        ? { ...r, seats: Math.max(0, r.seats - 1) }
+        : r
+    ));
+    toast({ title: '✅ Поездка забронирована!', description: `${ride.from} → ${ride.to}, ${ride.date}` });
+    setTab('bookings');
+    go('cabinet');
+  };
+
+  const cancelBooking = (idx: number) => {
+    setBookings(prev => prev.map((b, i) => i === idx ? { ...b, status: 'cancelled' } : b));
+    // возвращаем место
+    const b = bookings[idx];
+    setRides(prev => prev.map(r =>
+      r.from === b.from && r.to === b.to && r.date === b.date
+        ? { ...r, seats: r.seats + 1 }
+        : r
+    ));
+    toast({ title: 'Бронирование отменено', description: `${b.from} → ${b.to}` });
   };
 
   const openChat = (name: string) => {
@@ -299,34 +333,55 @@ export default function Index() {
           </div>
         ) : (
           <div className="grid gap-4 md:grid-cols-2">
-            {filtered.map((r,i) => (
-              <div key={i} className="panel-solid rounded-xl p-5 hov hover:border-primary/25">
-                <div className="flex items-start justify-between mb-4">
-                  <div className="font-display font-bold flex items-center gap-1.5 text-base">
-                    {r.from}<Icon name="ArrowRight" size={15} className="text-primary"/>{r.to}
+            {filtered.map((r,i) => {
+              const isBooked = bookings.some(b => b.from===r.from && b.to===r.to && b.date===r.date && b.status==='active');
+              const noSeats  = r.seats === 0;
+              return (
+                <div key={i} className={`panel-solid rounded-xl p-5 hov transition-all ${isBooked ? 'border-primary/40' : 'hover:border-primary/25'}`}>
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="font-display font-bold flex items-center gap-1.5 text-base">
+                      {r.from}<Icon name="ArrowRight" size={15} className="text-primary"/>{r.to}
+                    </div>
+                    <span className="font-display font-black text-lg grad-text">{r.price}</span>
                   </div>
-                  <span className="font-display font-black text-lg grad-text">{r.price}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Avatar className="h-9 w-9 border border-border">
-                      <AvatarFallback className="grad text-white text-xs font-bold">{r.name[0]}</AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="font-semibold text-sm">{r.name} <span className="text-muted-foreground font-normal text-xs">★{r.rating}</span></p>
-                      <p className="text-xs text-muted-foreground">{r.car}</p>
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-3">
+                      <Avatar className="h-9 w-9 border border-border">
+                        <AvatarFallback className="grad text-white text-xs font-bold">{r.name[0]}</AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <p className="font-semibold text-sm">{r.name} <span className="text-muted-foreground font-normal text-xs">★{r.rating}</span></p>
+                        <p className="text-xs text-muted-foreground">{r.car}</p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-xs text-muted-foreground">{r.date}</p>
+                      <Badge variant="secondary" className={`mt-1 rounded-md text-xs ${noSeats ? 'text-destructive' : ''}`}>
+                        {noSeats ? 'Мест нет' : `${r.seats} мест`}
+                      </Badge>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-xs text-muted-foreground">{r.date}</p>
-                    <Badge variant="secondary" className="mt-1 rounded-md text-xs">{r.seats} мест</Badge>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button
+                      onClick={() => book(r)}
+                      disabled={isBooked || noSeats}
+                      className={`h-10 rounded-lg border-0 text-sm font-semibold hov ${isBooked ? 'bg-primary/20 text-primary cursor-default' : noSeats ? 'bg-muted text-muted-foreground cursor-not-allowed' : 'grad text-white glow'}`}
+                    >
+                      {isBooked ? (
+                        <><Icon name="CheckCircle" size={14} className="mr-1.5"/>Забронировано</>
+                      ) : noSeats ? (
+                        <><Icon name="XCircle" size={14} className="mr-1.5"/>Мест нет</>
+                      ) : (
+                        <><Icon name="Bookmark" size={14} className="mr-1.5"/>Забронировать</>
+                      )}
+                    </Button>
+                    <Button onClick={()=>openChat(r.name)} variant="outline" className="h-10 rounded-lg border-border text-sm font-semibold hov">
+                      Написать <Icon name="MessageCircle" size={14} className="ml-1.5"/>
+                    </Button>
                   </div>
                 </div>
-                <Button onClick={()=>openChat(r.name)} className="mt-4 w-full grad rounded-lg border-0 text-white font-semibold h-10 text-sm hov">
-                  Написать <Icon name="MessageCircle" size={14} className="ml-2"/>
-                </Button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </Sec>
@@ -414,14 +469,19 @@ export default function Index() {
             </div>
 
             {/* вкладки */}
-            <div className="mb-5 flex gap-1 rounded-xl bg-muted p-1 w-fit">
+            <div className="mb-5 flex flex-wrap gap-1 rounded-xl bg-muted p-1 w-fit">
               {(user.role==='driver'
-                ?[['overview','Мои поездки','LayoutDashboard'],['publish','Опубликовать','Plus'],['chat','Чат','MessageCircle']] as const
-                :[['overview','Мои поездки','LayoutDashboard'],['chat','Чат','MessageCircle']] as const
+                ?[['overview','Поездки','LayoutDashboard'],['publish','Опубликовать','Plus'],['chat','Чат','MessageCircle']] as const
+                :[['overview','Главная','LayoutDashboard'],['bookings','Бронирования','Bookmark'],['chat','Чат','MessageCircle']] as const
               ).map(([t,l,ic])=>(
                 <button key={t} onClick={()=>setTab(t as typeof tab)}
                   className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold transition-all ${tab===t?'grad text-white shadow':'text-muted-foreground hover:text-foreground'}`}>
                   <Icon name={ic} size={14}/>{l}
+                  {t==='bookings' && bookings.filter(b=>b.status==='active').length > 0 && (
+                    <span className="ml-1 h-4 w-4 rounded-full grad text-white text-[10px] grid place-items-center">
+                      {bookings.filter(b=>b.status==='active').length}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
@@ -446,16 +506,28 @@ export default function Index() {
                         <span className="text-muted-foreground text-xs">{r.date}</span>
                       </div>
                     ))
-                  ) : SEED_RIDES.slice(0,3).map((r,i)=>(
+                  ) : bookings.filter(b=>b.status==='active').length===0 ? (
+                    <div className="py-8 text-center text-muted-foreground text-sm">
+                      <Icon name="Bookmark" size={28} className="mx-auto mb-2 opacity-25"/>
+                      Бронирований пока нет
+                    </div>
+                  ) : bookings.filter(b=>b.status==='active').slice(0,3).map((b,i)=>(
                     <div key={i} className="flex items-center justify-between py-2.5 border-b border-border/40 last:border-0 text-sm">
-                      <span className="font-medium">{r.from} → {r.to}</span>
-                      <Badge className="grad text-white border-0 rounded-md text-xs">{r.date.split(',')[0]}</Badge>
+                      <span className="font-medium">{b.from} → {b.to}</span>
+                      <Badge className="grad text-white border-0 rounded-md text-xs">{b.date.split(',')[0]}</Badge>
                     </div>
                   ))}
                   {user.role==='passenger'?(
-                    <Button onClick={()=>go('search')} className="mt-4 w-full grad h-10 rounded-lg border-0 text-white text-sm font-semibold hov">
-                      <Icon name="Search" size={14} className="mr-1.5"/>Найти поездку
-                    </Button>
+                    <div className="flex gap-2 mt-4">
+                      <Button onClick={()=>go('search')} className="flex-1 grad h-10 rounded-lg border-0 text-white text-sm font-semibold hov">
+                        <Icon name="Search" size={14} className="mr-1.5"/>Найти поездку
+                      </Button>
+                      {bookings.length > 0 && (
+                        <Button onClick={()=>setTab('bookings')} variant="outline" className="h-10 rounded-lg border-border text-sm hov">
+                          <Icon name="Bookmark" size={14}/>
+                        </Button>
+                      )}
+                    </div>
                   ):(
                     <Button onClick={()=>setTab('publish')} className="mt-4 w-full grad h-10 rounded-lg border-0 text-white text-sm font-semibold hov glow">
                       <Icon name="Plus" size={14} className="mr-1.5"/>Опубликовать поездку
@@ -468,7 +540,7 @@ export default function Index() {
                     <Icon name="BarChart2" size={15} className="text-secondary"/>Статистика
                   </p>
                   {(user.role==='passenger'
-                    ?[['MapPin','Поездок','8'],['Wallet','Сэкономлено','2 200 ₽'],['Star','Рейтинг','4.8']]
+                    ?[['MapPin','Бронирований',String(bookings.filter(b=>b.status==='active').length)],['Wallet','Сэкономлено','2 200 ₽'],['Star','Рейтинг','4.8']]
                     :[['MapPin','Поездок',String(myRides.length||34)],['Wallet','Заработано','28 400 ₽'],['Star','Рейтинг','5.0']]
                   ).map(([ic,l,v])=>(
                     <div key={l} className="flex items-center justify-between py-2.5 border-b border-border/40 last:border-0 text-sm">
@@ -521,6 +593,68 @@ export default function Index() {
                     ))}
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* ── bookings ── */}
+            {tab==='bookings' && (
+              <div className="mx-auto max-w-2xl">
+                <div className="panel-solid rounded-xl p-6">
+                  <div className="flex items-center justify-between mb-5">
+                    <p className="font-display font-bold flex items-center gap-2">
+                      <Icon name="Bookmark" size={17} className="text-primary"/>Мои бронирования
+                    </p>
+                    <Badge variant="secondary" className="rounded-md text-xs">
+                      {bookings.filter(b=>b.status==='active').length} активных
+                    </Badge>
+                  </div>
+
+                  {bookings.length === 0 ? (
+                    <div className="py-12 text-center text-muted-foreground">
+                      <Icon name="Bookmark" size={40} className="mx-auto mb-3 opacity-20"/>
+                      <p className="font-display font-semibold">Бронирований пока нет</p>
+                      <p className="text-sm mt-1">Найдите поездку и нажмите «Забронировать»</p>
+                      <Button onClick={()=>go('search')} className="mt-5 grad rounded-lg border-0 text-white font-semibold glow hov">
+                        <Icon name="Search" size={14} className="mr-2"/>Найти поездку
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {bookings.map((b,i)=>(
+                        <div key={i} className={`rounded-xl p-4 border transition-all ${b.status==='active' ? 'panel-solid border-border' : 'bg-muted/30 border-border/30 opacity-60'}`}>
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1 min-w-0">
+                              <div className="font-display font-bold flex items-center gap-1.5 text-base mb-1.5">
+                                {b.from}<Icon name="ArrowRight" size={14} className="text-primary shrink-0"/>{b.to}
+                              </div>
+                              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                                <span className="flex items-center gap-1"><Icon name="Calendar" size={11}/>{b.date}</span>
+                                <span className="flex items-center gap-1"><Icon name="User" size={11}/>{b.name}</span>
+                                <span className="flex items-center gap-1"><Icon name="Car" size={11}/>{b.car}</span>
+                              </div>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className="font-display font-black grad-text text-lg">{b.price}</p>
+                              <Badge className={`rounded-md text-[11px] border-0 mt-1 ${b.status==='active' ? 'bg-green-500/15 text-green-400' : 'bg-muted text-muted-foreground'}`}>
+                                {b.status==='active' ? '✓ Активно' : 'Отменено'}
+                              </Badge>
+                            </div>
+                          </div>
+                          {b.status==='active' && (
+                            <div className="flex gap-2 mt-3 pt-3 border-t border-border/40">
+                              <Button onClick={()=>openChat(b.name)} variant="outline" size="sm" className="rounded-lg border-border text-xs hov">
+                                <Icon name="MessageCircle" size={12} className="mr-1.5"/>Написать водителю
+                              </Button>
+                              <Button onClick={()=>cancelBooking(i)} variant="outline" size="sm" className="rounded-lg border-destructive/30 text-destructive hover:bg-destructive/10 text-xs hov ml-auto">
+                                <Icon name="X" size={12} className="mr-1.5"/>Отменить
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
