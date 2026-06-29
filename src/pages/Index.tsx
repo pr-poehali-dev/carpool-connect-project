@@ -49,6 +49,7 @@ const FAQ = [
 type Role = 'passenger' | 'driver';
 type AuthScreen = 'login' | 'register';
 type ChatMsg = { me: boolean; text: string; name?: string };
+type Ride = { from: string; to: string; date: string; price: string; name: string; rating: number; seats: number; car: string };
 
 function Section({ id, children, className = '' }: { id: string; children: React.ReactNode; className?: string }) {
   return (
@@ -87,7 +88,12 @@ const Index = () => {
   const [authForm, setAuthForm] = useState({ name: '', email: '', password: '' });
 
   // Cabinet tab
-  const [cabinetTab, setCabinetTab] = useState<'overview' | 'chat'>('overview');
+  const [cabinetTab, setCabinetTab] = useState<'overview' | 'chat' | 'publish'>('overview');
+
+  // Driver rides
+  const [myRides, setMyRides] = useState<Ride[]>([]);
+  const [rideForm, setRideForm] = useState({ from: '', to: '', date: '', time: '', price: '', seats: '', car: '' });
+  const [allRides, setAllRides] = useState<Ride[]>(ALL_RIDES);
 
   // Search
   const [from, setFrom] = useState('');
@@ -117,7 +123,7 @@ const Index = () => {
   const handleSearch = () => {
     const f = from.trim().toLowerCase();
     const t = to.trim().toLowerCase();
-    const res = ALL_RIDES.filter(
+    const res = allRides.filter(
       (r) => (!f || r.from.toLowerCase().includes(f)) && (!t || r.to.toLowerCase().includes(t)),
     );
     setFiltered(res);
@@ -175,6 +181,30 @@ const Index = () => {
     setUser(null);
     setCabinetTab('overview');
     toast({ title: 'Вы вышли из аккаунта' });
+  };
+
+  const publishRide = () => {
+    const { from: f, to: t, date: d, time, price, seats, car } = rideForm;
+    if (!f.trim() || !t.trim() || !d.trim() || !price.trim() || !seats.trim() || !car.trim()) {
+      toast({ title: 'Заполните все поля', variant: 'destructive' });
+      return;
+    }
+    const newRide: Ride = {
+      from: f.trim(),
+      to: t.trim(),
+      date: `${d}${time ? ', ' + time : ''}`,
+      price: `${price.trim()} ₽`,
+      name: user!.name,
+      rating: 5.0,
+      seats: parseInt(seats) || 1,
+      car: car.trim(),
+    };
+    setMyRides((prev) => [newRide, ...prev]);
+    setAllRides((prev) => [newRide, ...prev]);
+    setFiltered((prev) => [newRide, ...prev]);
+    setRideForm({ from: '', to: '', date: '', time: '', price: '', seats: '', car: '' });
+    setCabinetTab('overview');
+    toast({ title: 'Поездка опубликована! 🚗', description: `${f} → ${t} — попутчики уже могут найти вас в поиске` });
   };
 
   const donate = (sum: string) => toast({ title: 'Спасибо за поддержку! ❤️', description: `Переходим к оплате ${sum}` });
@@ -464,11 +494,14 @@ const Index = () => {
             </div>
 
             {/* Вкладки кабинета */}
-            <div className="flex rounded-2xl bg-muted/30 p-1 mb-6 w-fit">
-              {([['overview', 'Мои поездки', 'LayoutDashboard'], ['chat', 'Чат', 'MessageCircle']] as const).map(([tab, label, ic]) => (
+            <div className="flex flex-wrap rounded-2xl bg-muted/30 p-1 mb-6 w-fit gap-0.5">
+              {(user.role === 'driver'
+                ? [['overview', 'Мои поездки', 'LayoutDashboard'], ['publish', 'Опубликовать', 'Plus'], ['chat', 'Чат', 'MessageCircle']] as const
+                : [['overview', 'Мои поездки', 'LayoutDashboard'], ['chat', 'Чат', 'MessageCircle']] as const
+              ).map(([tab, label, ic]) => (
                 <button
                   key={tab}
-                  onClick={() => setCabinetTab(tab)}
+                  onClick={() => setCabinetTab(tab as typeof cabinetTab)}
                   className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold transition-all ${cabinetTab === tab ? 'gradient-sunset text-white shadow' : 'text-muted-foreground hover:text-foreground'}`}
                 >
                   <Icon name={ic} size={15} />{label}
@@ -483,18 +516,34 @@ const Index = () => {
                     <Icon name="Route" size={17} className="text-primary" />
                     {user.role === 'passenger' ? 'Мои бронирования' : 'Мои поездки'}
                   </div>
-                  {ALL_RIDES.slice(0, 3).map((r, i) => (
-                    <div key={i} className="flex items-center justify-between py-3 border-b border-white/5 last:border-0 group">
-                      <div className="text-sm font-medium">{r.from} → {r.to}</div>
-                      <Badge className="rounded-full text-xs gradient-sunset text-white border-0">{r.date.split(',')[0]}</Badge>
-                    </div>
-                  ))}
+                  {user.role === 'driver' ? (
+                    myRides.length === 0 ? (
+                      <div className="text-center text-muted-foreground py-6 text-sm">
+                        <Icon name="Car" size={32} className="mx-auto mb-2 opacity-30" />
+                        Поездок пока нет
+                      </div>
+                    ) : (
+                      myRides.slice(0, 3).map((r, i) => (
+                        <div key={i} className="flex items-center justify-between py-3 border-b border-white/5 last:border-0">
+                          <div className="text-sm font-medium">{r.from} → {r.to}</div>
+                          <Badge className="rounded-full text-xs gradient-sunset text-white border-0">{r.date.split(',')[0]}</Badge>
+                        </div>
+                      ))
+                    )
+                  ) : (
+                    ALL_RIDES.slice(0, 3).map((r, i) => (
+                      <div key={i} className="flex items-center justify-between py-3 border-b border-white/5 last:border-0">
+                        <div className="text-sm font-medium">{r.from} → {r.to}</div>
+                        <Badge className="rounded-full text-xs gradient-sunset text-white border-0">{r.date.split(',')[0]}</Badge>
+                      </div>
+                    ))
+                  )}
                   {user.role === 'passenger' ? (
                     <Button onClick={() => scrollTo('search')} className="w-full mt-4 rounded-xl gradient-sunset text-white border-0 font-semibold hover-scale">
                       <Icon name="Search" size={15} className="mr-2" />Найти поездку
                     </Button>
                   ) : (
-                    <Button onClick={() => toast({ title: 'Создание поездки', description: 'Форма публикации поездки скоро появится здесь' })} className="w-full mt-4 rounded-xl gradient-sunset text-white border-0 font-semibold hover-scale">
+                    <Button onClick={() => setCabinetTab('publish')} className="w-full mt-4 rounded-xl gradient-sunset text-white border-0 font-semibold hover-scale glow">
                       <Icon name="Plus" size={15} className="mr-2" />Опубликовать поездку
                     </Button>
                   )}
@@ -518,6 +567,73 @@ const Index = () => {
                     <Icon name="MessageCircle" size={15} className="mr-2 text-primary" />Открыть чат
                   </Button>
                 </div>
+              </div>
+            )}
+
+            {cabinetTab === 'publish' && (
+              <div className="max-w-xl mx-auto glass-card rounded-3xl p-7">
+                <div className="font-display font-bold text-xl mb-1 flex items-center gap-2">
+                  <Icon name="MapPin" size={20} className="text-primary" />Новая поездка
+                </div>
+                <p className="text-muted-foreground text-sm mb-6">Заполните данные — попутчики увидят вас в поиске сразу после публикации</p>
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="relative">
+                      <Icon name="MapPin" size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-primary" />
+                      <Input value={rideForm.from} onChange={(e) => setRideForm({ ...rideForm, from: e.target.value })} placeholder="Откуда" className="pl-9 h-12 rounded-xl bg-muted/40 border-white/5" />
+                    </div>
+                    <div className="relative">
+                      <Icon name="Flag" size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-accent" />
+                      <Input value={rideForm.to} onChange={(e) => setRideForm({ ...rideForm, to: e.target.value })} placeholder="Куда" className="pl-9 h-12 rounded-xl bg-muted/40 border-white/5" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="relative">
+                      <Icon name="Calendar" size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-secondary" />
+                      <Input value={rideForm.date} onChange={(e) => setRideForm({ ...rideForm, date: e.target.value })} placeholder="Дата (пр: 5 июля)" className="pl-9 h-12 rounded-xl bg-muted/40 border-white/5" />
+                    </div>
+                    <div className="relative">
+                      <Icon name="Clock" size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                      <Input value={rideForm.time} onChange={(e) => setRideForm({ ...rideForm, time: e.target.value })} placeholder="Время (пр: 10:00)" className="pl-9 h-12 rounded-xl bg-muted/40 border-white/5" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="relative">
+                      <Icon name="Wallet" size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                      <Input value={rideForm.price} onChange={(e) => setRideForm({ ...rideForm, price: e.target.value })} placeholder="Цена, ₽" type="number" className="pl-9 h-12 rounded-xl bg-muted/40 border-white/5" />
+                    </div>
+                    <div className="relative">
+                      <Icon name="Users" size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                      <Input value={rideForm.seats} onChange={(e) => setRideForm({ ...rideForm, seats: e.target.value })} placeholder="Свободных мест" type="number" min="1" max="8" className="pl-9 h-12 rounded-xl bg-muted/40 border-white/5" />
+                    </div>
+                  </div>
+                  <div className="relative">
+                    <Icon name="Car" size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <Input value={rideForm.car} onChange={(e) => setRideForm({ ...rideForm, car: e.target.value })} placeholder="Марка и модель авто (пр: Toyota Camry)" className="pl-9 h-12 rounded-xl bg-muted/40 border-white/5" />
+                  </div>
+                  <Button onClick={publishRide} className="w-full h-12 gradient-sunset text-white border-0 rounded-xl font-semibold hover-scale glow mt-1">
+                    <Icon name="Send" size={16} className="mr-2" />Опубликовать поездку
+                  </Button>
+                </div>
+
+                {myRides.length > 0 && (
+                  <div className="mt-8">
+                    <div className="font-display font-bold text-sm mb-3 text-muted-foreground uppercase tracking-wider">Мои опубликованные поездки</div>
+                    <div className="space-y-2">
+                      {myRides.map((r, i) => (
+                        <div key={i} className="flex items-center justify-between py-3 px-4 rounded-2xl bg-muted/30 border border-white/5">
+                          <div className="flex items-center gap-2 font-semibold text-sm">
+                            {r.from} <Icon name="ArrowRight" size={13} className="text-primary" /> {r.to}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs text-muted-foreground">{r.date}</span>
+                            <Badge className="gradient-sunset text-white border-0 rounded-full text-xs">{r.price}</Badge>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
